@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FreshFold Laundry Quotation System</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header no-print">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">FF</div>
+        <div>
+          <p class="eyebrow">FreshFold Laundry</p>
+          <h1>Quotation System</h1>
+          <p class="tagline">Fresh. Clean. Delivered.</p>
+        </div>
+      </div>
+      <div class="contact-pill">
+        <span>Call / WhatsApp</span>
+        <strong>0100677971</strong>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="workspace" aria-label="Quotation builder">
+        <section class="card no-print">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Customer</p>
+              <h2>Quote Details</h2>
+            </div>
+            <div class="quote-number">
+              <span>Quote No.</span>
+              <strong id="quote-number">Generating...</strong>
+            </div>
+          </div>
+
+          <div class="form-grid customer-grid">
+            <label>
+              Customer name
+              <input id="customer-name" type="text" autocomplete="name" placeholder="Customer name" />
+            </label>
+            <label>
+              Customer phone
+              <input id="customer-phone" type="tel" autocomplete="tel" placeholder="Optional phone" />
+              <span id="customer-phone-error" class="field-error" role="alert"></span>
+            </label>
+            <label>
+              Customer location
+              <input id="customer-location" type="text" autocomplete="street-address" placeholder="Location" />
+            </label>
+            <label>
+              Quotation date
+              <input id="quote-date" type="date" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card no-print">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Price List</p>
+              <h2>Add Item</h2>
+            </div>
+            <button id="cancel-edit" class="ghost-button hidden" type="button">Cancel edit</button>
+          </div>
+
+          <form id="price-item-form" novalidate>
+            <div class="form-grid quote-entry-grid">
+              <label>
+                Service category
+                <input id="service-category" list="category-options" type="text" placeholder="Search category" />
+              </label>
+              <label>
+                Item name
+                <input id="service-item" list="item-options" type="text" placeholder="Search item" />
+              </label>
+              <label>
+                Unit type
+                <select id="unit-type">
+                  <option value="piece">piece</option>
+                  <option value="kg">kg</option>
+                  <option value="set">set</option>
+                  <option value="meter">meter</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label id="custom-unit-wrap" class="hidden">
+                Custom unit
+                <input id="custom-unit" type="text" placeholder="Unit name" />
+              </label>
+              <label>
+                Quantity
+                <input id="quantity" type="number" min="0.01" step="0.01" value="1" />
+              </label>
+              <label>
+                Unit price
+                <input id="unit-price" type="number" min="0" step="1" placeholder="KES" />
+                <span id="price-hint" class="field-hint"></span>
+              </label>
+              <label class="wide">
+                Optional note
+                <input id="item-note" type="text" placeholder="Item note" />
+              </label>
+            </div>
+
+            <div id="item-form-error" class="form-error" role="alert"></div>
+            <div class="form-actions">
+              <button id="add-item-button" class="primary-button" type="submit">Add item</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card no-print">
+          <div class="section-head compact-head">
+            <div>
+              <p class="eyebrow">Quick Add</p>
+              <h2>Common Items</h2>
+            </div>
+          </div>
+          <div id="quick-add-list" class="quick-add-list"></div>
+        </section>
+
+        <section class="card no-print">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Custom</p>
+              <h2>Add Custom Item</h2>
+            </div>
+          </div>
+
+          <form id="custom-item-form" novalidate>
+            <div class="form-grid quote-entry-grid">
+              <label>
+                Item name
+                <input id="custom-item-name" type="text" placeholder="Item or service name" />
+              </label>
+              <label>
+                Category
+                <input id="custom-category" list="category-options" type="text" placeholder="Category" />
+              </label>
+              <label>
+                Unit price
+                <input id="custom-price" type="number" min="0" step="1" placeholder="KES" />
+              </label>
+              <label>
+                Unit type
+                <select id="custom-unit-type">
+                  <option value="piece">piece</option>
+                  <option value="kg">kg</option>
+                  <option value="set">set</option>
+                  <option value="meter">meter</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <label id="custom-form-unit-wrap" class="hidden">
+                Custom unit
+                <input id="custom-form-unit" type="text" placeholder="Unit name" />
+              </label>
+              <label>
+                Quantity
+                <input id="custom-quantity" type="number" min="0.01" step="0.01" value="1" />
+              </label>
+              <label class="wide">
+                Optional note
+                <input id="custom-note" type="text" placeholder="Item note" />
+              </label>
+            </div>
+            <div id="custom-form-error" class="form-error" role="alert"></div>
+            <div class="form-actions">
+              <button class="secondary-button" type="submit">Add custom item</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="card table-card no-print">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Quote</p>
+              <h2>Items</h2>
+            </div>
+            <span id="item-count" class="muted-pill">0 items</span>
+          </div>
+
+          <div id="empty-state" class="empty-state">
+            Add an item to begin the quotation.
+          </div>
+
+          <div id="quote-table-wrap" class="table-wrap hidden">
+            <table class="quote-table">
+              <thead>
+                <tr>
+                  <th>Category</th>
+                  <th>Item</th>
+                  <th>Unit</th>
+                  <th>Qty</th>
+                  <th>Unit price</th>
+                  <th>Line total</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="quote-lines"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card preview-card">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Preview</p>
+              <h2>Printable Quotation</h2>
+            </div>
+          </div>
+          <div id="quote-preview" class="print-sheet"></div>
+        </section>
+      </section>
+
+      <aside class="summary-panel no-print" aria-label="Quote summary">
+        <section class="card summary-card">
+          <p class="eyebrow">Summary</p>
+          <h2>Totals</h2>
+
+          <div class="summary-line">
+            <span>Subtotal</span>
+            <strong id="subtotal">KES 0</strong>
+          </div>
+
+          <div class="discount-controls">
+            <label>
+              Discount type
+              <select id="discount-type">
+                <option value="fixed">Fixed amount</option>
+                <option value="percentage">Percentage</option>
+              </select>
+            </label>
+            <label>
+              Discount value
+              <input id="discount-value" type="number" min="0" step="1" value="0" />
+            </label>
+          </div>
+
+          <div class="summary-line discount-line">
+            <span>Discount</span>
+            <strong id="discount-total">KES 0</strong>
+          </div>
+
+          <div class="fee-grid">
+            <label>
+              Delivery fee
+              <input id="delivery-fee" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>
+              Pickup fee
+              <input id="pickup-fee" type="number" min="0" step="1" value="0" />
+            </label>
+            <label>
+              Urgent service fee
+              <input id="urgent-fee" type="number" min="0" step="1" value="0" />
+            </label>
+          </div>
+
+          <div class="summary-line">
+            <span>Extra charges</span>
+            <strong id="extra-charges">KES 0</strong>
+          </div>
+
+          <div class="grand-total">
+            <span>Grand total</span>
+            <strong id="grand-total">KES 0</strong>
+          </div>
+
+          <label class="paid-field">
+            Amount paid
+            <input id="amount-paid" type="number" min="0" step="1" value="0" />
+          </label>
+
+          <div class="summary-line balance-line">
+            <span>Balance due</span>
+            <strong id="balance-due">KES 0</strong>
+          </div>
+
+          <label class="notes-field">
+            Optional notes
+            <textarea id="quote-notes" rows="4" placeholder="Quote notes"></textarea>
+          </label>
+
+          <div id="status-message" class="status-message" role="status"></div>
+
+          <div class="action-stack">
+            <button id="save-quote" class="primary-button" type="button">Save quote</button>
+            <button id="print-quote" class="secondary-button" type="button">Print quote</button>
+            <button id="download-pdf" class="secondary-button" type="button">Save as PDF</button>
+            <button id="share-whatsapp" class="whatsapp-button" type="button">Share through WhatsApp</button>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <div class="mobile-summary no-print">
+      <div>
+        <span>Grand total</span>
+        <strong id="mobile-grand-total">KES 0</strong>
+      </div>
+      <button id="mobile-print" class="primary-button" type="button">Print</button>
+    </div>
+
+    <datalist id="category-options"></datalist>
+    <datalist id="item-options"></datalist>
+
+    <script src="data/services.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
