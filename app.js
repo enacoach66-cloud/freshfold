@@ -6,9 +6,9 @@
   const UNITS = ["piece", "kg", "set", "meter"];
   const priceList = (window.FRESHFOLD_PRICE_LIST || window.WASHWAVE_PRICE_LIST || []).filter((g) => g.active !== false);
   const services = priceList.flatMap((g) => g.items.filter((i) => i.active !== false).map((i) => ({ ...i, category: g.category, categoryId: g.id })));
-  const state = { quoteNumber: "", rows: [], editingRowId: null, quickFilter: "all", draftReady: false };
+  const state = { quoteNumber: "", rows: [], editingRowId: null, quickFilter: "all", draftReady: false, remoteId: null, writeToken: null, synced: false };
   const els = {};
-  let draftTimer;
+  let draftTimer, remoteTimer, savingRemote = false, saveWaiters = [];
 
   document.addEventListener("DOMContentLoaded", boot);
 
@@ -45,12 +45,13 @@
     els.newQuote.addEventListener("click", () => requestNewQuote(true));
     els.saveQuote.addEventListener("click", saveQuote);
     els.previewQuote.addEventListener("click", openPreview); els.mobilePreview.addEventListener("click", openPreview);
-    els.printQuote.addEventListener("click", printQuote); els.downloadPdf.addEventListener("click", printQuote); els.previewPrint.addEventListener("click", printQuote);
+    els.printQuote.addEventListener("click", (event) => printQuote(event, "print")); els.downloadPdf.addEventListener("click", (event) => printQuote(event, "pdf")); els.previewPrint.addEventListener("click", (event) => printQuote(event, "print"));
     els.shareWhatsapp.addEventListener("click", () => prepareWhatsApp());
     els.phoneForm.addEventListener("submit", (e) => { e.preventDefault(); if (validatePhoneValue(els.sharePhone.value)) { els.phoneDialog.close(); openWhatsApp(els.sharePhone.value); } else els.sharePhoneError.textContent = "Enter a valid Kenyan phone number."; });
     els.savedQuotes.addEventListener("click", openSaved); els.savedSearch.addEventListener("input", renderSaved); els.savedDate.addEventListener("input", renderSaved); els.savedList.addEventListener("click", handleSavedAction);
     els.dismissWelcome.addEventListener("click", () => { localStorage.setItem(STORAGE.welcome, "1"); els.welcome.classList.add("hidden"); });
     els.continueDraft.addEventListener("click", recoverDraft); els.discardDraft.addEventListener("click", () => { localStorage.removeItem(STORAGE.draft); els.recoveryDialog.close(); resetQuote(true); });
+    window.addEventListener("online", () => { if (hasInformation() && !state.synced) persistRemote().then((saved) => { if (saved) toast("Unsynced quotation is now securely saved."); }); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll("dialog[open]").forEach((d) => d.close()); });
   }
 
@@ -157,22 +158,39 @@
   }
 
   function openPreview() { renderPreview(); els.previewDialog.showModal(); }
-  function printQuote(e) {
+  async function printQuote(e, outputType = "print") {
     if (!requireRows()) return;
-    withLoading(e?.currentTarget, "Preparing…", () => {
+    await withAsyncLoading(e?.currentTarget, "Saving…", async () => {
+      if (!await persistRemote()) return;
+      await recordRemoteEvent(outputType === "pdf" ? "pdf_generated" : "print_initiated");
       renderPreview();
-      const originalTitle = document.title;
-      const suggestedFileName = getQuotationFileName();
+      const originalTitle = document.title, suggestedFileName = getQuotationFileName();
       document.title = suggestedFileName;
-      window.addEventListener("afterprint", () => { document.title = originalTitle; }, { once: true });
+      window.addEventListener("afterprint", () => { document.title = originalTitle; recordRemoteEvent("print_dialog_closed"); }, { once: true });
       window.print();
       toast(`Print dialog opened. Suggested file name: ${suggestedFileName}.pdf`);
     });
   }
   function updateActions() { document.querySelectorAll(".output-action").forEach((b) => { b.disabled = state.rows.length === 0; }); }
 
-  function saveQuote() { if (!requireRows() || !validatePhone()) return; withLoading(els.saveQuote, "Saving…", () => { const quote = serialize(); const saved = readSaved(); const next = [quote, ...saved.filter((q) => q.quoteNumber !== quote.quoteNumber)]; localStorage.setItem(STORAGE.saved, JSON.stringify(next.slice(0, 100))); localStorage.removeItem(STORAGE.draft); toast(`Quote ${state.quoteNumber} saved.`); }); }
-  function serialize() { return { quoteNumber: state.quoteNumber, savedAt: new Date().toISOString(), customer: customer(), quoteDate: els.quoteDate.value, rows: state.rows, totals: totals(), discountType: els.discountType.value, discountValue: positive(els.discountValue.value), fees: { delivery: positive(els.deliveryFee.value), pickup: positive(els.pickupFee.value), urgent: positive(els.urgentFee.value) }, amountPaid: positive(els.amountPaid.value), notes: els.quoteNotes.value.trim() }; }
+  async function saveQuote() { if (!requireRows() || !validatePhone()) return; await withAsyncLoading(els.saveQuote, "Saving…", async () => { if (!await persistRemote()) return; saveLocalCopy(); localStorage.removeItem(STORAGE.draft); toast("Quotation saved successfully."); }); }
+  function serialize() { return { id: state.remoteId, writeToken: state.writeToken, remoteId: state.remoteId, synced: state.synced, quoteNumber: state.quoteNumber, savedAt: new Date().toISOString(), customer: customer(), quoteDate: els.quoteDate.value, rows: state.rows, totals: totals(), discountType: els.discountType.value, discountValue: positive(els.discountValue.value), fees: { delivery: positive(els.deliveryFee.value), pickup: positive(els.pickupFee.value), urgent: positive(els.urgentFee.value) }, amountPaid: positive(els.amountPaid.value), notes: els.quoteNotes.value.trim() }; }
+  function saveLocalCopy() { const quote = serialize(), saved = readSaved(), next = [quote, ...saved.filter((q) => q.quoteNumber !== quote.quoteNumber)]; localStorage.setItem(STORAGE.saved, JSON.stringify(next.slice(0, 100))); }
+
+  async function persistRemote(silent = false) {
+    if (savingRemote) return new Promise((resolve) => saveWaiters.push(resolve));
+    if (!navigator.onLine) { state.synced = false; setSyncStatus("Unsynced draft — waiting for connection.", true); if (!silent) toast("Unable to save this quotation. It remains an unsynced draft on this device.", true); return false; }
+    savingRemote = true;
+    let outcome = false;
+    try {
+      const creating = !state.synced, payload = { ...serialize(), id: state.remoteId, writeToken: state.writeToken, quoteNumber: creating ? null : state.quoteNumber, items: state.rows };
+      const response = await fetch(creating ? "/api/quotes" : `/api/quotes/${state.remoteId}`, { method: creating ? "POST" : "PUT", headers: { "Content-Type": "application/json", "X-Quote-Token": state.writeToken }, body: JSON.stringify(payload) });
+      const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Save failed");
+      state.synced = true; state.remoteId = data.quotation.id; state.quoteNumber = data.quotation.quote_number; state.writeToken = data.writeToken || state.writeToken; els.quoteNumber.textContent = state.quoteNumber; localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); setSyncStatus("Securely autosaved."); outcome = true; return true;
+    } catch { state.synced = false; localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); setSyncStatus("Unsynced draft — retrying when online.", true); if (!silent) toast("Unable to save this quotation. Check your connection and try again.", true); return false; }
+    finally { savingRemote = false; saveWaiters.splice(0).forEach((resolve) => resolve(outcome)); }
+  }
+  async function recordRemoteEvent(eventType) { if (!state.synced) return false; try { const response = await fetch(`/api/quotes/${state.remoteId}/events`, { method: "POST", headers: { "Content-Type": "application/json", "X-Quote-Token": state.writeToken }, body: JSON.stringify({ eventType }) }); return response.ok; } catch { return false; } }
   function readSaved() { try { const data = JSON.parse(localStorage.getItem(STORAGE.saved) || "[]"); return Array.isArray(data) ? data.map(migrateStoredQuote) : []; } catch { return []; } }
 
   function migrateStoredQuote(quote) {
@@ -191,19 +209,19 @@
   function handleSavedAction(e) { const b = e.target.closest("button[data-saved-action]"); if (!b) return; const quote = readSaved().find((q) => q.quoteNumber === b.dataset.number); if (!quote) return; const action = b.dataset.savedAction;
     if (action === "delete" && confirm(`Delete ${quote.quoteNumber}?`)) { localStorage.setItem(STORAGE.saved, JSON.stringify(readSaved().filter((q) => q.quoteNumber !== quote.quoteNumber))); renderSaved(); toast("Saved quote deleted."); return; }
     if (action === "duplicate") { loadQuote(quote, true); els.savedDialog.close(); toast("Quote duplicated with a new number."); return; }
-    loadQuote(quote, false); els.savedDialog.close(); if (action === "print" || action === "pdf") setTimeout(() => printQuote(), 0); if (action === "share") setTimeout(() => prepareWhatsApp(), 0); if (action === "open") toast(`${quote.quoteNumber} opened.`);
+    loadQuote(quote, false); els.savedDialog.close(); if (action === "print" || action === "pdf") setTimeout(() => printQuote(undefined, action), 0); if (action === "share") setTimeout(() => prepareWhatsApp(), 0); if (action === "open") toast(`${quote.quoteNumber} opened.`);
   }
 
-  function loadQuote(q, duplicate) { state.quoteNumber = duplicate ? generateQuoteNumber() : q.quoteNumber; state.rows = Array.isArray(q.rows) ? q.rows.map((r) => ({ ...r, id: r.id || uid() })) : []; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = q.customer?.type || "Walk-in customer"; els.customerName.value = q.customer?.name || ""; els.customerPhone.value = q.customer?.phone || ""; els.customerLocation.value = q.customer?.location || ""; els.quoteDate.value = duplicate ? today() : q.quoteDate || today(); els.discountType.value = q.discountType || (q.discountValue ? "fixed" : "none"); els.discountValue.value = q.discountValue || 0; els.deliveryFee.value = q.fees?.delivery || 0; els.pickupFee.value = q.fees?.pickup || 0; els.urgentFee.value = q.fees?.urgent || 0; els.amountPaid.value = duplicate ? 0 : q.amountPaid || 0; els.quoteNotes.value = q.notes || ""; renderAll(); scheduleDraft(); }
+  function loadQuote(q, duplicate) { state.quoteNumber = duplicate ? generateQuoteNumber() : q.quoteNumber; state.remoteId = duplicate ? createUuid() : q.remoteId || q.id || createUuid(); state.writeToken = duplicate ? createWriteToken() : q.writeToken || createWriteToken(); state.synced = duplicate ? false : Boolean(q.synced && q.remoteId); state.rows = Array.isArray(q.rows) ? q.rows.map((r) => ({ ...r, id: r.id || uid() })) : []; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = q.customer?.type || "Walk-in customer"; els.customerName.value = q.customer?.name || ""; els.customerPhone.value = q.customer?.phone || ""; els.customerLocation.value = q.customer?.location || ""; els.quoteDate.value = duplicate ? today() : q.quoteDate || today(); els.discountType.value = q.discountType || (q.discountValue ? "fixed" : "none"); els.discountValue.value = q.discountValue || 0; els.deliveryFee.value = q.fees?.delivery || 0; els.pickupFee.value = q.fees?.pickup || 0; els.urgentFee.value = q.fees?.urgent || 0; els.amountPaid.value = duplicate ? 0 : q.amountPaid || 0; els.quoteNotes.value = q.notes || ""; renderAll(); scheduleDraft(); }
 
   function prepareWhatsApp() { if (!requireRows()) return; if (!validatePhoneValue(els.customerPhone.value)) { els.sharePhone.value = els.customerPhone.value; els.sharePhoneError.textContent = ""; els.phoneDialog.showModal(); els.sharePhone.focus(); return; } openWhatsApp(els.customerPhone.value); }
-  function openWhatsApp(phone) { withLoading(els.shareWhatsapp, "Preparing…", () => { const t = totals(), c = customer(); const lines = state.rows.map((r) => `• ${r.itemName} × ${quantity(r.quantity)} — ${money(lineTotal(r))}`).join("\n"); const message = `${BUSINESS.name}\nQuotation ${state.quoteNumber}\nCustomer: ${c.name || c.type}\n\n${lines}\n\nGrand total: ${money(t.grandTotal)}\nAmount paid: ${money(t.amountPaid)}\n${t.changeDue ? "Change due" : "Balance due"}: ${money(t.changeDue || t.balanceDue)}\n\nPayment: ${BUSINESS.paymentMethod}\n${BUSINESS.paymentNumber}\n\nCall / WhatsApp: ${BUSINESS.phone}`; window.open(`https://wa.me/${formatPhone(phone)}?text=${encodeURIComponent(message)}`, "_blank", "noopener"); toast("WhatsApp message prepared."); }); }
+  async function openWhatsApp(phone) { await withAsyncLoading(els.shareWhatsapp, "Saving…", async () => { if (!await persistRemote()) return; await recordRemoteEvent("whatsapp_shared"); const t = totals(), c = customer(); const lines = state.rows.map((r) => `• ${r.itemName} × ${quantity(r.quantity)} — ${money(lineTotal(r))}`).join("\n"); const message = `${BUSINESS.name}\nQuotation ${state.quoteNumber}\nCustomer: ${c.name || c.type}\n\n${lines}\n\nGrand total: ${money(t.grandTotal)}\nAmount paid: ${money(t.amountPaid)}\n${t.changeDue ? "Change due" : "Balance due"}: ${money(t.changeDue || t.balanceDue)}\n\nPayment: ${BUSINESS.paymentMethod}\n${BUSINESS.paymentNumber}\n\nCall / WhatsApp: ${BUSINESS.phone}`; window.open(`https://wa.me/${formatPhone(phone)}?text=${encodeURIComponent(message)}`, "_blank", "noopener"); toast("WhatsApp message prepared."); }); }
 
   function onQuoteChange(event) { if (event.target === els.discountType && els.discountType.value === "none") els.discountValue.value = 0; validatePhone(); renderAll(); scheduleDraft(); }
-  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(() => { if (hasInformation()) localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); else localStorage.removeItem(STORAGE.draft); }, 250); }
+  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(() => { if (hasInformation()) localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); else localStorage.removeItem(STORAGE.draft); }, 250); clearTimeout(remoteTimer); if (state.rows.length) remoteTimer = setTimeout(() => persistRemote(true), 1600); }
   function recoverDraft() { try { loadQuote(JSON.parse(localStorage.getItem(STORAGE.draft)), false); toast("Unfinished quotation restored."); } catch { toast("The unfinished quotation could not be restored.", true); } els.recoveryDialog.close(); }
   function requestNewQuote(confirmNeeded) { if (confirmNeeded && hasInformation() && !confirm("Start a new quote? Unsaved information in the current quote will be cleared.")) return; localStorage.removeItem(STORAGE.draft); resetQuote(true); toast("New quote ready."); }
-  function resetQuote(newNumber) { state.quoteNumber = newNumber || !state.quoteNumber ? generateQuoteNumber() : state.quoteNumber; state.rows = []; state.editingRowId = null; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = "Walk-in customer"; [els.customerName, els.customerPhone, els.customerLocation, els.quoteNotes].forEach((e) => e.value = ""); els.quoteDate.value = today(); els.discountType.value = "none"; [els.discountValue, els.deliveryFee, els.pickupFee, els.urgentFee, els.amountPaid].forEach((e) => e.value = 0); els.serviceCategory.value = ""; populateServices(); clearServiceForm(); renderAll(); }
+  function resetQuote(newNumber) { state.quoteNumber = newNumber || !state.quoteNumber ? generateQuoteNumber() : state.quoteNumber; state.remoteId = createUuid(); state.writeToken = createWriteToken(); state.synced = false; state.rows = []; state.editingRowId = null; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = "Walk-in customer"; [els.customerName, els.customerPhone, els.customerLocation, els.quoteNotes].forEach((e) => e.value = ""); els.quoteDate.value = today(); els.discountType.value = "none"; [els.discountValue, els.deliveryFee, els.pickupFee, els.urgentFee, els.amountPaid].forEach((e) => e.value = 0); els.serviceCategory.value = ""; populateServices(); clearServiceForm(); renderAll(); }
   function hasInformation() { return state.rows.length || els.customerName.value || els.customerPhone.value || els.customerLocation.value || positive(els.discountValue.value) || positive(els.deliveryFee.value) || positive(els.pickupFee.value) || positive(els.urgentFee.value) || positive(els.amountPaid.value) || els.quoteNotes.value; }
 
   function validatePhone() { const value = els.customerPhone.value.trim(), valid = !value || validatePhoneValue(value); els.customerPhone.classList.toggle("input-error", !valid); els.customerPhoneError.textContent = valid ? "" : "Enter a valid Kenyan phone number."; els.customerPhone.setAttribute("aria-invalid", String(!valid)); return valid; }
@@ -225,6 +243,8 @@
   function setUnit(unit) { els.unitType.value = UNITS.includes(unit) ? unit : "custom"; els.customUnit.value = UNITS.includes(unit) ? "" : unit; toggleUnit(els.unitType, els.customUnitWrap); }
   function toggleUnit(select, wrap) { wrap.classList.toggle("hidden", select.value !== "custom"); }
   function withLoading(button, label, work) { if (!button) return work(); const original = button.textContent; button.disabled = true; button.textContent = label; setTimeout(() => { try { work(); } finally { button.textContent = original; updateActions(); } }, 80); }
+  async function withAsyncLoading(button, label, work) { const original = button?.textContent; if (button) { button.disabled = true; button.textContent = label; } try { return await work(); } finally { if (button) { button.textContent = original; updateActions(); } } }
+  function setSyncStatus(message, error = false) { els.statusMessage.textContent = message; els.statusMessage.classList.toggle("error", error); }
   function toast(message, error = false) { els.toast.textContent = message; els.toast.className = `toast show${error ? " error" : ""}`; clearTimeout(toast.timer); toast.timer = setTimeout(() => els.toast.classList.remove("show"), 3500); }
   function showError(el, message) { el.textContent = message; }
   function money(value) { return new Intl.NumberFormat("en-KE", { style: "currency", currency: "KES", maximumFractionDigits: 0 }).format(number(value)).replace("Ksh", "KES").replace(/\s+/g, " "); }
@@ -235,6 +255,8 @@
   function normalize(value) { return String(value || "").trim().toLowerCase(); }
   function toCamel(id) { return id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()); }
   function uid() { return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`; }
+  function createUuid() { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)); }
+  function createWriteToken() { return [...crypto.getRandomValues(new Uint8Array(32))].map((byte) => byte.toString(16).padStart(2, "0")).join(""); }
   function today() { return new Date().toISOString().slice(0, 10); }
   function displayDate(value) { if (!value) return "Not dated"; return new Intl.DateTimeFormat("en-KE", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${value}T12:00:00`)); }
   function formatPhone(value) { const digits = String(value).replace(/\D/g, ""); return digits.startsWith("0") ? `254${digits.slice(1)}` : digits.startsWith("254") ? digits : `254${digits}`; }

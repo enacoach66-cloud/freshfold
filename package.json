@@ -1,0 +1,16 @@
+{
+  "name": "freshfold-quotation-system",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "check": "node --check app.js && node --check api/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.52.0"
+  },
+  "devDependencies": {
+    "vercel": "^44.7.2"
+  }
+}
