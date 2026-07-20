@@ -105,6 +105,13 @@ a:focus-visible {
   font-size: 1.2rem;
 }
 
+.brand-logo {
+  display: block;
+  width: clamp(145px, 17vw, 210px);
+  height: auto;
+  object-fit: contain;
+}
+
 .eyebrow {
   margin: 0 0 3px;
   color: var(--turquoise-dark);
@@ -597,6 +604,14 @@ textarea:focus {
   color: var(--navy);
 }
 
+.preview-logo-image {
+  display: block;
+  width: 210px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
 .preview-header p {
   margin: 7px 0 0;
   color: var(--muted);
@@ -955,6 +970,10 @@ textarea:focus {
     flex: 0 0 48px;
   }
 
+  .brand-logo {
+    width: 140px;
+  }
+
   .app-shell {
     padding-inline: 10px;
   }
@@ -992,7 +1011,8 @@ textarea:focus {
 
 @media print {
   @page {
-    margin: 12mm;
+    size: A4;
+    margin: 0;
   }
 
   body {
@@ -1035,7 +1055,8 @@ textarea:focus {
   }
 
   .quotation-sheet {
-    padding: 0;
+    min-height: 297mm;
+    padding: 12mm;
   }
 
   .preview-table {
@@ -1158,6 +1179,10 @@ textarea:focus {
   .toast.error { background: var(--danger); }
   .preview-table small { display: block; margin-top: 3px; color: var(--muted); }
   .thank-you { margin: 20px 0 0; text-align: center; color: var(--navy); font-weight: 850; }
+  .payment-details { width: min(390px, 100%); margin: 18px 0 0 auto; padding: 14px 16px; border: 1px solid #b9e5e7; border-radius: 8px; background: #ecfafa; display: grid; gap: 3px; }
+  .payment-details span { color: var(--muted); font-size: .8rem; font-weight: 750; text-transform: uppercase; }
+  .payment-details strong { color: var(--navy); }
+  .payment-details b { color: var(--turquoise-dark); font-size: 1.2rem; letter-spacing: .04em; }
 }
 
 @media screen and (max-width: 1180px) {
@@ -1194,5 +1219,5 @@ textarea:focus {
   .print-only { display: block !important; }
   .quotation-sheet { font-size: 10pt; }
   .preview-table tr { break-inside: avoid; page-break-inside: avoid; }
-  .preview-note, .terms-note, .thank-you { break-inside: avoid; }
+  .preview-note, .payment-details, .terms-note, .thank-you { break-inside: avoid; }
 }
