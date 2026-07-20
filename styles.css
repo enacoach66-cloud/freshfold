@@ -12,7 +12,8 @@
   --warning: #a96308;
   --danger: #b3261e;
   --success: #107a55;
-  --shadow: 0 14px 40px rgba(8, 50, 88, 0.09);
+  --shadow: 0 12px 32px rgba(8, 50, 88, 0.08);
+  --focus-ring: 0 0 0 3px rgba(5, 174, 186, 0.2);
 }
 
 * {
@@ -21,6 +22,7 @@
 
 html {
   min-height: 100%;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -45,6 +47,29 @@ textarea {
 
 button {
   cursor: pointer;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--turquoise);
+  outline-offset: 3px;
+}
+
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--navy);
+  color: var(--white);
+  font-weight: 800;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
 }
 
 .hidden {
@@ -132,7 +157,7 @@ button {
   margin: 0 auto;
   padding: 0 24px 36px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 370px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
   gap: 22px;
   align-items: start;
 }
@@ -140,6 +165,7 @@ button {
 .workspace {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .card {
@@ -148,6 +174,7 @@ button {
   border-radius: 8px;
   box-shadow: var(--shadow);
   padding: 22px;
+  min-width: 0;
 }
 
 .section-head {
@@ -193,11 +220,11 @@ button {
 }
 
 .customer-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .quote-entry-grid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 label {
@@ -206,6 +233,7 @@ label {
   color: var(--ink);
   font-weight: 700;
   font-size: 0.9rem;
+  min-width: 0;
 }
 
 .wide {
@@ -227,6 +255,11 @@ textarea {
     box-shadow 140ms ease;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: #8290a0;
+}
+
 textarea {
   resize: vertical;
 }
@@ -235,7 +268,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--turquoise);
-  box-shadow: 0 0 0 3px rgba(5, 174, 186, 0.16);
+  box-shadow: var(--focus-ring);
 }
 
 .input-error {
@@ -305,7 +338,7 @@ textarea:focus {
 
 .quick-add-list {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
 }
 
@@ -358,6 +391,9 @@ textarea:focus {
 
 .table-wrap {
   overflow-x: auto;
+  max-width: 100%;
+  overscroll-behavior-inline: contain;
+  scrollbar-gutter: stable;
 }
 
 .quote-table {
@@ -379,6 +415,7 @@ textarea:focus {
   border-bottom: 1px solid var(--soft-line);
   padding: 12px;
   vertical-align: top;
+  overflow-wrap: anywhere;
 }
 
 .quote-table td small {
@@ -445,6 +482,7 @@ textarea:focus {
 .summary-panel {
   position: sticky;
   top: 18px;
+  min-width: 0;
 }
 
 .summary-card {
@@ -531,7 +569,7 @@ textarea:focus {
   background: var(--white);
   border: 1px solid var(--line);
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .quotation-sheet {
@@ -612,6 +650,7 @@ textarea:focus {
   display: block;
   margin-top: 3px;
   color: var(--navy);
+  overflow-wrap: anywhere;
 }
 
 .preview-table {
@@ -630,6 +669,12 @@ textarea:focus {
 .preview-table td {
   border-bottom: 1px solid var(--soft-line);
   padding: 11px;
+  overflow-wrap: anywhere;
+}
+
+.preview-table th:nth-child(n + 3),
+.preview-table td:nth-child(n + 3) {
+  white-space: nowrap;
 }
 
 .preview-table td span {
@@ -696,7 +741,7 @@ textarea:focus {
   display: none;
 }
 
-@media (max-width: 1120px) {
+@media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 1fr;
   }
@@ -705,9 +750,13 @@ textarea:focus {
     position: static;
   }
 
-  .customer-grid,
-  .quote-entry-grid,
-  .quick-add-list {
+  .quote-entry-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .quote-entry-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -756,7 +805,6 @@ textarea:focus {
 
   .customer-grid,
   .quote-entry-grid,
-  .quick-add-list,
   .preview-customer,
   .discount-controls {
     grid-template-columns: 1fr;
@@ -828,7 +876,45 @@ textarea:focus {
   }
 
   .preview-table {
+    display: block;
     font-size: 0.9rem;
+  }
+
+  .preview-table thead {
+    display: none;
+  }
+
+  .preview-table tbody,
+  .preview-table tr,
+  .preview-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .preview-table tr {
+    margin-bottom: 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .preview-table td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 10px;
+    border: 0;
+    padding: 6px 2px;
+    white-space: normal !important;
+  }
+
+  .preview-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 800;
+  }
+
+  .preview-table .preview-empty {
+    display: block;
   }
 
   .mobile-summary {
@@ -855,6 +941,52 @@ textarea:focus {
 
   .mobile-summary button {
     min-width: 104px;
+  }
+}
+
+@media (max-width: 420px) {
+  .app-header {
+    padding: 14px;
+  }
+
+  .brand-mark {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+  }
+
+  .app-shell {
+    padding-inline: 10px;
+  }
+
+  .card,
+  .quotation-sheet {
+    padding: 14px;
+  }
+
+  .quick-add-list {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-table td,
+  .quote-table td {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
+  .mobile-summary button {
+    min-width: 88px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
   }
 }
 
@@ -894,12 +1026,42 @@ textarea:focus {
     padding: 0;
   }
 
+  .print-sheet {
+    overflow: visible;
+  }
+
   .preview-card .section-head {
     display: none;
   }
 
   .quotation-sheet {
     padding: 0;
+  }
+
+  .preview-table {
+    display: table;
+  }
+
+  .preview-table thead {
+    display: table-header-group;
+  }
+
+  .preview-table tbody {
+    display: table-row-group;
+  }
+
+  .preview-table tr {
+    display: table-row;
+    border: 0;
+  }
+
+  .preview-table td {
+    display: table-cell;
+    width: auto;
+  }
+
+  .preview-table td::before {
+    content: none;
   }
 
   .preview-table th {

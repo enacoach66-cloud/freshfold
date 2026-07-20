@@ -530,15 +530,15 @@
           .map(
             (row, index) => `
               <tr>
-                <td>${index + 1}</td>
-                <td>
+                <td data-label="#">${index + 1}</td>
+                <td data-label="Item">
                   <strong>${escapeHtml(row.itemName)}</strong>
                   <span>${escapeHtml(row.category)}${row.note ? ` - ${escapeHtml(row.note)}` : ""}</span>
                 </td>
-                <td>${escapeHtml(row.unitType)}</td>
-                <td>${formatQuantity(row.quantity)}</td>
-                <td>${formatMoney(row.unitPrice)}</td>
-                <td>${formatMoney(getLineTotal(row))}</td>
+                <td data-label="Unit">${escapeHtml(row.unitType)}</td>
+                <td data-label="Qty">${formatQuantity(row.quantity)}</td>
+                <td data-label="Unit price">${formatMoney(row.unitPrice)}</td>
+                <td data-label="Total">${formatMoney(getLineTotal(row))}</td>
               </tr>
             `
           )
