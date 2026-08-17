@@ -16,7 +16,7 @@ window.FRESHFOLD_PRICE_LIST = [
     category: "Clothes",
     active: true,
     items: [
-      { id: "clothes-per-kg", name: "Clothes per kg", defaultPrice: 80, unitType: "kg", active: true },
+      { id: "clothes-per-kg", name: "Clothes per kg", defaultPrice: 60, unitType: "kg", active: true },
       { id: "suits", name: "Suits", defaultPrice: 350, unitType: "piece", active: true },
       { id: "jackets-towels", name: "Jackets or Towels", defaultPrice: 100, unitType: "piece", active: true },
       { id: "door-mats", name: "Door mats", defaultPrice: 150, unitType: "piece", active: true }
