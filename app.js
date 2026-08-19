@@ -51,7 +51,6 @@
     els.savedQuotes.addEventListener("click", openSaved); els.savedSearch.addEventListener("input", renderSaved); els.savedDate.addEventListener("input", renderSaved); els.savedList.addEventListener("click", handleSavedAction);
     els.dismissWelcome.addEventListener("click", () => { localStorage.setItem(STORAGE.welcome, "1"); els.welcome.classList.add("hidden"); });
     els.continueDraft.addEventListener("click", recoverDraft); els.discardDraft.addEventListener("click", () => { localStorage.removeItem(STORAGE.draft); els.recoveryDialog.close(); resetQuote(true); });
-    window.addEventListener("online", () => { if (hasInformation() && !state.synced) persistRemote().then((saved) => { if (saved) toast("Unsynced quotation is now securely saved."); }); });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll("dialog[open]").forEach((d) => d.close()); });
   }
 
@@ -160,37 +159,28 @@
   function openPreview() { renderPreview(); els.previewDialog.showModal(); }
   async function printQuote(e, outputType = "print") {
     if (!requireRows()) return;
-    await withAsyncLoading(e?.currentTarget, "Saving…", async () => {
-      if (!await persistRemote()) return;
-      await recordRemoteEvent(outputType === "pdf" ? "pdf_generated" : "print_initiated");
+    await withAsyncLoading(e?.currentTarget, "Preparing...", async () => {
       renderPreview();
       const originalTitle = document.title, suggestedFileName = getQuotationFileName();
       document.title = suggestedFileName;
-      window.addEventListener("afterprint", () => { document.title = originalTitle; recordRemoteEvent("print_dialog_closed"); }, { once: true });
+      window.addEventListener("afterprint", () => { document.title = originalTitle; }, { once: true });
       window.print();
       toast(`Print dialog opened. Suggested file name: ${suggestedFileName}.pdf`);
     });
   }
   function updateActions() { document.querySelectorAll(".output-action").forEach((b) => { b.disabled = state.rows.length === 0; }); }
 
-  async function saveQuote() { if (!requireRows() || !validatePhone()) return; await withAsyncLoading(els.saveQuote, "Saving…", async () => { if (!await persistRemote()) return; saveLocalCopy(); localStorage.removeItem(STORAGE.draft); toast("Quotation saved successfully."); }); }
+  async function saveQuote() { if (!requireRows() || !validatePhone()) return; await withAsyncLoading(els.saveQuote, "Saving...", async () => { saveLocalCopy(); localStorage.removeItem(STORAGE.draft); setSyncStatus("Saved on this device only."); toast("Quotation saved on this device."); }); }
   function serialize() { return { id: state.remoteId, writeToken: state.writeToken, remoteId: state.remoteId, synced: state.synced, quoteNumber: state.quoteNumber, savedAt: new Date().toISOString(), customer: customer(), quoteDate: els.quoteDate.value, rows: state.rows, totals: totals(), discountType: els.discountType.value, discountValue: positive(els.discountValue.value), fees: { delivery: positive(els.deliveryFee.value), pickup: positive(els.pickupFee.value), urgent: positive(els.urgentFee.value) }, amountPaid: positive(els.amountPaid.value), notes: els.quoteNotes.value.trim() }; }
   function saveLocalCopy() { const quote = serialize(), saved = readSaved(), next = [quote, ...saved.filter((q) => q.quoteNumber !== quote.quoteNumber)]; localStorage.setItem(STORAGE.saved, JSON.stringify(next.slice(0, 100))); }
 
   async function persistRemote(silent = false) {
-    if (savingRemote) return new Promise((resolve) => saveWaiters.push(resolve));
-    if (!navigator.onLine) { state.synced = false; setSyncStatus("Unsynced draft — waiting for connection.", true); if (!silent) toast("Unable to save this quotation. It remains an unsynced draft on this device.", true); return false; }
-    savingRemote = true;
-    let outcome = false;
-    try {
-      const creating = !state.synced, payload = { ...serialize(), id: state.remoteId, writeToken: state.writeToken, quoteNumber: creating ? null : state.quoteNumber, items: state.rows };
-      const response = await fetch(creating ? "/api/quotes" : `/api/quotes/${state.remoteId}`, { method: creating ? "POST" : "PUT", headers: { "Content-Type": "application/json", "X-Quote-Token": state.writeToken }, body: JSON.stringify(payload) });
-      const data = await response.json().catch(() => ({})); if (!response.ok) throw new Error(data.error || "Save failed");
-      state.synced = true; state.remoteId = data.quotation.id; state.quoteNumber = data.quotation.quote_number; state.writeToken = data.writeToken || state.writeToken; els.quoteNumber.textContent = state.quoteNumber; localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); setSyncStatus("Securely autosaved."); outcome = true; return true;
-    } catch { state.synced = false; localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); setSyncStatus("Unsynced draft — retrying when online.", true); if (!silent) toast("Unable to save this quotation. Check your connection and try again.", true); return false; }
-    finally { savingRemote = false; saveWaiters.splice(0).forEach((resolve) => resolve(outcome)); }
+    state.synced = false;
+    localStorage.setItem(STORAGE.draft, JSON.stringify(serialize()));
+    setSyncStatus("Draft saved on this device only.");
+    return true;
   }
-  async function recordRemoteEvent(eventType) { if (!state.synced) return false; try { const response = await fetch(`/api/quotes/${state.remoteId}/events`, { method: "POST", headers: { "Content-Type": "application/json", "X-Quote-Token": state.writeToken }, body: JSON.stringify({ eventType }) }); return response.ok; } catch { return false; } }
+  async function recordRemoteEvent(eventType) { return false; }
   function readSaved() { try { const data = JSON.parse(localStorage.getItem(STORAGE.saved) || "[]"); return Array.isArray(data) ? data.map(migrateStoredQuote) : []; } catch { return []; } }
 
   function migrateStoredQuote(quote) {
@@ -215,10 +205,10 @@
   function loadQuote(q, duplicate) { state.quoteNumber = duplicate ? generateQuoteNumber() : q.quoteNumber; state.remoteId = duplicate ? createUuid() : q.remoteId || q.id || createUuid(); state.writeToken = duplicate ? createWriteToken() : q.writeToken || createWriteToken(); state.synced = duplicate ? false : Boolean(q.synced && q.remoteId); state.rows = Array.isArray(q.rows) ? q.rows.map((r) => ({ ...r, id: r.id || uid() })) : []; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = q.customer?.type || "Walk-in customer"; els.customerName.value = q.customer?.name || ""; els.customerPhone.value = q.customer?.phone || ""; els.customerLocation.value = q.customer?.location || ""; els.quoteDate.value = duplicate ? today() : q.quoteDate || today(); els.discountType.value = q.discountType || (q.discountValue ? "fixed" : "none"); els.discountValue.value = q.discountValue || 0; els.deliveryFee.value = q.fees?.delivery || 0; els.pickupFee.value = q.fees?.pickup || 0; els.urgentFee.value = q.fees?.urgent || 0; els.amountPaid.value = duplicate ? 0 : q.amountPaid || 0; els.quoteNotes.value = q.notes || ""; renderAll(); scheduleDraft(); }
 
   function prepareWhatsApp() { if (!requireRows()) return; if (!validatePhoneValue(els.customerPhone.value)) { els.sharePhone.value = els.customerPhone.value; els.sharePhoneError.textContent = ""; els.phoneDialog.showModal(); els.sharePhone.focus(); return; } openWhatsApp(els.customerPhone.value); }
-  async function openWhatsApp(phone) { await withAsyncLoading(els.shareWhatsapp, "Saving…", async () => { if (!await persistRemote()) return; await recordRemoteEvent("whatsapp_shared"); const t = totals(), c = customer(); const lines = state.rows.map((r) => `• ${r.itemName} × ${quantity(r.quantity)} — ${money(lineTotal(r))}`).join("\n"); const message = `${BUSINESS.name}\nQuotation ${state.quoteNumber}\nCustomer: ${c.name || c.type}\n\n${lines}\n\nGrand total: ${money(t.grandTotal)}\nAmount paid: ${money(t.amountPaid)}\n${t.changeDue ? "Change due" : "Balance due"}: ${money(t.changeDue || t.balanceDue)}\n\nPayment: ${BUSINESS.paymentMethod}\n${BUSINESS.paymentNumber}\n\nCall / WhatsApp: ${BUSINESS.phone}`; window.open(`https://wa.me/${formatPhone(phone)}?text=${encodeURIComponent(message)}`, "_blank", "noopener"); toast("WhatsApp message prepared."); }); }
+  async function openWhatsApp(phone) { await withAsyncLoading(els.shareWhatsapp, "Preparing...", async () => { const t = totals(), c = customer(); const lines = state.rows.map((r) => `• ${r.itemName} × ${quantity(r.quantity)} — ${money(lineTotal(r))}`).join("\n"); const message = `${BUSINESS.name}\nQuotation ${state.quoteNumber}\nCustomer: ${c.name || c.type}\n\n${lines}\n\nGrand total: ${money(t.grandTotal)}\nAmount paid: ${money(t.amountPaid)}\n${t.changeDue ? "Change due" : "Balance due"}: ${money(t.changeDue || t.balanceDue)}\n\nPayment: ${BUSINESS.paymentMethod}\n${BUSINESS.paymentNumber}\n\nCall / WhatsApp: ${BUSINESS.phone}`; window.open(`https://wa.me/${formatPhone(phone)}?text=${encodeURIComponent(message)}`, "_blank", "noopener"); toast("WhatsApp message prepared."); }); }
 
   function onQuoteChange(event) { if (event.target === els.discountType && els.discountType.value === "none") els.discountValue.value = 0; validatePhone(); renderAll(); scheduleDraft(); }
-  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(() => { if (hasInformation()) localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); else localStorage.removeItem(STORAGE.draft); }, 250); clearTimeout(remoteTimer); if (state.rows.length) remoteTimer = setTimeout(() => persistRemote(true), 1600); }
+  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(() => { if (hasInformation()) { localStorage.setItem(STORAGE.draft, JSON.stringify(serialize())); setSyncStatus("Draft saved on this device only."); } else { localStorage.removeItem(STORAGE.draft); setSyncStatus(""); } }, 250); clearTimeout(remoteTimer); }
   function recoverDraft() { try { loadQuote(JSON.parse(localStorage.getItem(STORAGE.draft)), false); toast("Unfinished quotation restored."); } catch { toast("The unfinished quotation could not be restored.", true); } els.recoveryDialog.close(); }
   function requestNewQuote(confirmNeeded) { if (confirmNeeded && hasInformation() && !confirm("Start a new quote? Unsaved information in the current quote will be cleared.")) return; localStorage.removeItem(STORAGE.draft); resetQuote(true); toast("New quote ready."); }
   function resetQuote(newNumber) { state.quoteNumber = newNumber || !state.quoteNumber ? generateQuoteNumber() : state.quoteNumber; state.remoteId = createUuid(); state.writeToken = createWriteToken(); state.synced = false; state.rows = []; state.editingRowId = null; els.quoteNumber.textContent = state.quoteNumber; els.customerType.value = "Walk-in customer"; [els.customerName, els.customerPhone, els.customerLocation, els.quoteNotes].forEach((e) => e.value = ""); els.quoteDate.value = today(); els.discountType.value = "none"; [els.discountValue, els.deliveryFee, els.pickupFee, els.urgentFee, els.amountPaid].forEach((e) => e.value = 0); els.serviceCategory.value = ""; populateServices(); clearServiceForm(); renderAll(); }
